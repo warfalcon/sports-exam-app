@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#3498db">
+    <meta name="description" content="体育打卡 - 记录和管理体育训练数据">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon.svg">
+    <title>体育打卡</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- 登录/注册页面 -->
+        <div id="auth-page" class="page active">
+            <div class="auth-container">
+                <h1>🏃 体育打卡</h1>
+                <div class="auth-tabs">
+                    <button class="tab-btn active" onclick="showAuthTab('login')">登录</button>
+                    <button class="tab-btn" onclick="showAuthTab('register')">注册</button>
+                </div>
+                
+                <!-- 登录表单 -->
+                <div id="login-form" class="auth-form">
+                    <select id="login-user" class="mobile-select">
+                        <option value="">选择用户</option>
+                    </select>
+                    <input type="password" id="login-password" placeholder="密码" class="mobile-input" autocomplete="current-password">
+                    <button onclick="login()" class="mobile-btn">登录</button>
+                </div>
+                
+                <!-- 注册表单 -->
+                <div id="register-form" class="auth-form hidden">
+                    <input type="text" id="reg-username" placeholder="用户名" class="mobile-input" autocomplete="username">
+                    <select id="reg-gender" class="mobile-select">
+                        <option value="">选择性别</option>
+                        <option value="male">男生</option>
+                        <option value="female">女生</option>
+                    </select>
+                    <select id="reg-color" class="mobile-select">
+                        <option value="">选择主题颜色</option>
+                        <option value="blue">蓝色</option>
+                        <option value="green">绿色</option>
+                        <option value="purple">紫色</option>
+                        <option value="orange">橙色</option>
+                        <option value="pink">粉色</option>
+                    </select>
+                    <input type="password" id="reg-password" placeholder="密码" class="mobile-input" autocomplete="new-password">
+                    <input type="password" id="reg-confirm-password" placeholder="确认密码" class="mobile-input" autocomplete="new-password">
+                    <button onclick="register()" class="mobile-btn">注册</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主页面 -->
+        <div id="main-page" class="page">
+            <!-- 顶部导航 -->
+            <header class="header">
+                <div class="header-left">
+                    <h2>🏃 体育打卡</h2>
+                </div>
+                <div class="header-right">
+                    <span id="current-user">欢迎，用户</span>
+                    <span id="countdown" class="countdown"></span>
+                    <button onclick="showSettings()">⚙️ 设置</button>
+                    <button onclick="logout()">退出</button>
+                </div>
+            </header>
+
+            <!-- 主内容区 -->
+            <main class="main-content">
+                <!-- 概览页面 -->
+                <div id="dashboard-page" class="content-page active">
+                    <h2>训练概览</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>本月打卡天数</h3>
+                            <p id="month-checkins">0 天</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>连续打卡</h3>
+                            <p id="streak-days">0 天</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>总训练次数</h3>
+                            <p id="total-records">0 次</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>距离考试</h3>
+                            <p id="exam-countdown">未设置</p>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h3>近30天训练趋势</h3>
+                        <canvas id="trend-chart"></canvas>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h3>项目成绩趋势</h3>
+                        <select id="chart-sport" onchange="updateHistoryChart()" class="mobile-select">
+                            <option value="">选择项目查看趋势</option>
+                        </select>
+                        <canvas id="history-chart"></canvas>
+                    </div>
+                    
+                    <div class="recent-records">
+                        <h3>最近记录</h3>
+                        <table id="recent-table">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>项目</th>
+                                    <th>成绩</th>
+                                    <th>得分</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 记录训练页面 -->
+                <div id="record-page" class="content-page">
+                    <h2>记录训练</h2>
+                    
+                    <!-- 每日打卡 -->
+                    <div id="daily-record" class="record-form">
+                        <div class="form-group">
+                            <label>日期</label>
+                            <input type="date" id="daily-date" class="mobile-input">
+                        </div>
+                        <div class="form-group">
+                            <label>训练项目（可多选）</label>
+                            <div class="checkbox-group">
+                                <label class="mobile-checkbox"><input type="checkbox" value="800m" class="sport-item"> 800米跑</label>
+                                <label class="mobile-checkbox"><input type="checkbox" value="50m" class="sport-item"> 50米跑</label>
+                                <label class="mobile-checkbox"><input type="checkbox" value="situp" class="sport-item"> 仰卧起坐</label>
+                                <label class="mobile-checkbox"><input type="checkbox" value="jump" class="sport-item"> 跳绳</label>
+                                <label class="mobile-checkbox"><input type="checkbox" value="stretch" class="sport-item"> 坐位体前屈</label>
+                            </div>
+                        </div>
+                        <div id="sport-inputs"></div>
+                        <div class="form-group">
+                            <label>训练时长（分钟）</label>
+                            <input type="number" id="training-duration" min="1" placeholder="例如：30" class="mobile-input" inputmode="numeric">
+                        </div>
+                        <div class="form-group">
+                            <label>备注</label>
+                            <textarea id="training-note" placeholder="记录训练感受..." class="mobile-input"></textarea>
+                        </div>
+                        <button onclick="saveDailyRecord()" class="mobile-btn mobile-btn-primary">保存打卡记录</button>
+                    </div>
+                </div>
+
+                <!-- 训练历史页面 -->
+                <div id="history-page" class="content-page">
+                    <h2>训练历史</h2>
+                    <div class="filter-bar">
+                        <select id="history-sport" class="mobile-select">
+                            <option value="all">全部项目</option>
+                        </select>
+                        <button onclick="exportData()" class="mobile-btn mobile-btn-success">📥 导出数据</button>
+                    </div>
+                    <div id="history-list" class="history-list-mobile"></div>
+                    <table id="history-table" class="history-table-desktop">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>项目</th>
+                                <th>成绩</th>
+                                <th>得分</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <!-- 评分标准页面 -->
+                <div id="standards-page" class="content-page">
+                    <h2>山东中考体育评分标准</h2>
+                    <div class="standards-tabs">
+                        <button class="tab-btn active" onclick="showStandardTab('female')">女生标准</button>
+                        <button class="tab-btn" onclick="showStandardTab('male')">男生标准</button>
+                    </div>
+                    
+                    <div id="female-standards" class="standards-content">
+                        <h3>女生评分标准</h3>
+                        <div class="standard-section">
+                            <h4>800米跑（必考）</h4>
+                            <table class="standard-table" id="female-800m"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                        <div class="standard-section">
+                            <h4>50米跑</h4>
+                            <table class="standard-table" id="female-50m"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                        <div class="standard-section">
+                            <h4>1分钟仰卧起坐</h4>
+                            <table class="standard-table" id="female-situp"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                        <div class="standard-section">
+                            <h4>1分钟跳绳</h4>
+                            <table class="standard-table" id="female-jump"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                        <div class="standard-section">
+                            <h4>坐位体前屈</h4>
+                            <table class="standard-table" id="female-stretch"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="male-standards" class="standards-content hidden">
+                        <h3>男生评分标准</h3>
+                        <div class="standard-section">
+                            <h4>1000米跑（必考）</h4>
+                            <table class="standard-table" id="male-1000m"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                        <div class="standard-section">
+                            <h4>50米跑</h4>
+                            <table class="standard-table" id="male-50m"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                        <div class="standard-section">
+                            <h4>引体向上</h4>
+                            <table class="standard-table" id="male-pullup"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                        <div class="standard-section">
+                            <h4>1分钟跳绳</h4>
+                            <table class="standard-table" id="male-jump"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                        <div class="standard-section">
+                            <h4>坐位体前屈</h4>
+                            <table class="standard-table" id="male-stretch"></table>
+                            <div class="standard-table-mobile"></div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- 移动端底部导航栏 -->
+            <nav class="mobile-nav">
+                <button class="mobile-nav-btn active" onclick="showPage('dashboard')">
+                    <span class="mobile-nav-icon">📊</span>
+                    <span class="mobile-nav-label">概览</span>
+                </button>
+                <button class="mobile-nav-btn" onclick="showPage('record')">
+                    <span class="mobile-nav-icon">📝</span>
+                    <span class="mobile-nav-label">记录</span>
+                </button>
+                <button class="mobile-nav-btn" onclick="showPage('history')">
+                    <span class="mobile-nav-icon">📈</span>
+                    <span class="mobile-nav-label">历史</span>
+                </button>
+                <button class="mobile-nav-btn" onclick="showPage('standards')">
+                    <span class="mobile-nav-icon">📋</span>
+                    <span class="mobile-nav-label">标准</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- 快速打卡浮动按钮 -->
+        <div id="quick-fab" class="quick-fab" onclick="showQuickCheckin()">
+            <span>⚡</span>
+        </div>
+
+        <!-- 快速打卡弹窗 -->
+        <div id="quick-checkin-modal" class="modal hidden">
+            <div class="modal-content">
+                <h3>快速打卡</h3>
+                <div class="quick-sport-buttons">
+                    <button class="quick-sport-btn" onclick="quickCheckin('800m')">🏃 800/1000米</button>
+                    <button class="quick-sport-btn" onclick="quickCheckin('50m')">⚡ 50米</button>
+                    <button class="quick-sport-btn" onclick="quickCheckin('situp')">💪 仰卧起坐</button>
+                    <button class="quick-sport-btn" onclick="quickCheckin('jump')">🤸 跳绳</button>
+                    <button class="quick-sport-btn" onclick="quickCheckin('stretch')">🧘 坐位体前屈</button>
+                </div>
+                <div class="modal-buttons">
+                    <button onclick="closeQuickCheckin()" class="mobile-btn">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 设置弹窗 -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content">
+                <h3>设置</h3>
+                <div class="form-group">
+                    <label>中考体育考试日期</label>
+                    <input type="date" id="exam-date-setting">
+                </div>
+                <div class="form-group">
+                    <label>修改密码</label>
+                    <input type="password" id="new-password" placeholder="新密码">
+                </div>
+                <div class="modal-buttons">
+                    <button onclick="saveSettings()">保存</button>
+                    <button onclick="closeSettings()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast提示 -->
+    <div id="toast-container"></div>
+
+    <script src="standards.js"></script>
+    <script src="app.js"></script>
+    <script src="test-data.js"></script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('ServiceWorker registered:', registration.scope);
+            })
+            .catch((error) => {
+              console.log('ServiceWorker registration failed:', error);
+            });
+        });
+      }
+    </script>
+</body>
+</html>

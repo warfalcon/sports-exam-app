@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>生成 PWA 图标</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f6fa; }
+        .icon-grid { display: flex; flex-wrap: wrap; gap: 20px; }
+        .icon-item { text-align: center; }
+        canvas { border: 1px solid #ddd; border-radius: 12px; }
+        .icon-item p { margin: 8px 0 0; font-size: 14px; color: #666; }
+        button { padding: 12px 24px; background: #3498db; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; margin-bottom: 20px; }
+        button:hover { background: #2980b9; }
+    </style>
+</head>
+<body>
+    <h1>PWA 应用图标生成器</h1>
+    <p>点击下方按钮下载所有尺寸的图标，然后解压到 <code>icons</code> 文件夹中。</p>
+    <button onclick="generateAllIcons()">生成并下载所有图标</button>
+    
+    <div class="icon-grid" id="iconGrid"></div>
+    
+    <h2 style="margin-top: 40px;">或者单独下载:</h2>
+    <div class="icon-grid" id="manualGrid"></div>
+
+    <script>
+        const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+        
+        function drawIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = size * dpr;
+            canvas.height = size * dpr;
+            canvas.style.width = size + 'px';
+            canvas.style.height = size + 'px';
+            ctx.scale(dpr, dpr);
+            
+            ctx.fillStyle = '#3498db';
+            roundRect(ctx, 0, 0, size, size, size * 0.2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${size * 0.4}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('体', size / 2, size / 2);
+            
+            ctx.fillStyle = '#2980b9';
+            ctx.font = `bold ${size * 0.25}px Arial`;
+            ctx.fillText('育', size / 2, size * 0.7);
+        }
+        
+        function roundRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+        
+        function generateAllIcons() {
+            sizes.forEach(size => {
+                const canvas = document.createElement('canvas');
+                drawIcon(canvas, size);
+                const link = document.createElement('a');
+                link.download = `icon-${size}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+        
+        function downloadSingle(size) {
+            const canvas = document.createElement('canvas');
+            drawIcon(canvas, size);
+            const link = document.createElement('a');
+            link.download = `icon-${size}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+        
+        const grid = document.getElementById('iconGrid');
+        const manualGrid = document.getElementById('manualGrid');
+        
+        sizes.forEach(size => {
+            const canvas = document.createElement('canvas');
+            drawIcon(canvas, size);
+            const item = document.createElement('div');
+            item.className = 'icon-item';
+            item.innerHTML = `<canvas id="canvas-${size}"></canvas><p>${size}x${size}</p>`;
+            grid.appendChild(item);
+            
+            const canvas2 = document.createElement('canvas');
+            drawIcon(canvas2, size);
+            const manualItem = document.createElement('div');
+            manualItem.className = 'icon-item';
+            manualItem.innerHTML = `<canvas id="canvas2-${size}"></canvas><p>${size}x${size}</p>`;
+            manualItem.querySelector('canvas').addEventListener('click', () => downloadSingle(size));
+            manualGrid.appendChild(manualItem);
+        });
+        
+        sizes.forEach(size => {
+            drawIcon(document.getElementById(`canvas-${size}`), size);
+            drawIcon(document.getElementById(`canvas2-${size}`), size);
+        });
+    </script>
+</body>
+</html>
