@@ -26,9 +26,7 @@
                 
                 <!-- 登录表单 -->
                 <div id="login-form" class="auth-form">
-                    <select id="login-user" class="mobile-select">
-                        <option value="">选择用户</option>
-                    </select>
+                    <input type="text" id="login-username" placeholder="用户名" class="mobile-input" autocomplete="username">
                     <input type="password" id="login-password" placeholder="密码" class="mobile-input" autocomplete="current-password">
                     <button onclick="login()" class="mobile-btn">登录</button>
                 </div>
@@ -66,8 +64,6 @@
                 <div class="header-right">
                     <span id="current-user">欢迎，用户</span>
                     <span id="countdown" class="countdown"></span>
-                    <button onclick="showSettings()">⚙️ 设置</button>
-                    <button onclick="logout()">退出</button>
                 </div>
             </header>
 
@@ -96,7 +92,7 @@
                     </div>
                     
                     <div class="chart-container">
-                        <h3>近30天训练趋势</h3>
+                        <h3>近7天训练趋势</h3>
                         <canvas id="trend-chart"></canvas>
                     </div>
                     
@@ -146,10 +142,6 @@
                         </div>
                         <div id="sport-inputs"></div>
                         <div class="form-group">
-                            <label>训练时长（分钟）</label>
-                            <input type="number" id="training-duration" min="1" placeholder="例如：30" class="mobile-input" inputmode="numeric">
-                        </div>
-                        <div class="form-group">
                             <label>备注</label>
                             <textarea id="training-note" placeholder="记录训练感受..." class="mobile-input"></textarea>
                         </div>
@@ -179,6 +171,33 @@
                         </thead>
                         <tbody></tbody>
                     </table>
+                </div>
+
+                <!-- 我的页面 -->
+                 
+                <div id="profile-page" class="content-page">
+                    <h2>我的</h2>
+                    <div class="profile-section">
+                        <div class="profile-info">
+                            <div class="profile-avatar">👤</div>
+                            <div class="profile-details">
+                                <p id="profile-username"></p>
+                                <p id="profile-gender"></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-list">
+                        <div class="settings-item" onclick="showSettings()">
+                            <span class="settings-icon">⚙️</span>
+                            <span class="settings-label">设置</span>
+                            <span class="settings-arrow">›</span>
+                        </div>
+                        <div class="settings-item" onclick="logout()">
+                            <span class="settings-icon">🚪</span>
+                            <span class="settings-label">退出登录</span>
+                            <span class="settings-arrow">›</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 评分标准页面 -->
@@ -267,6 +286,10 @@
                     <span class="mobile-nav-icon">📋</span>
                     <span class="mobile-nav-label">标准</span>
                 </button>
+                <button class="mobile-nav-btn" onclick="showProfile()">
+                    <span class="mobile-nav-icon">👤</span>
+                    <span class="mobile-nav-label">我的</span>
+                </button>
             </nav>
         </div>
 
@@ -317,7 +340,6 @@
 
     <script src="standards.js"></script>
     <script src="app.js"></script>
-    <script src="test-data.js"></script>
 
     <script>
       if ('serviceWorker' in navigator) {

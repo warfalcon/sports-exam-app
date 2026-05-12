@@ -1,8 +1,12 @@
+// API 配置 - 部署时请替换为你的 Render 后端地址
+// 格式: https://your-render-app-name.onrender.com/api
+const API_BASE_URL = 'https://sports-exam-backend.onrender.com/api';
+
 // 全局状态
 let currentUser = null;
-let users = JSON.parse(localStorage.getItem('sports_users')) || [];
-let records = JSON.parse(localStorage.getItem('sports_records')) || [];
-let examDate = localStorage.getItem('sports_exam_date') || '';
+let token = localStorage.getItem('sports_token') || null;
+let records = [];
+let examDate = '';
 let trendChart = null;
 let historyChart = null;
 
@@ -26,7 +30,6 @@ function showToast(message, type = 'info') {
     
     container.appendChild(toast);
     
-    // 3秒后自动消失
     setTimeout(() => {
         toast.classList.add('hiding');
         setTimeout(() => {
@@ -77,22 +80,118 @@ const THEME_COLORS = {
     pink: { primary: '#e91e63', secondary: '#c2185b', light: '#fce4ec' }
 };
 
+// API 请求封装
+async function apiRequest(url, method = 'GET', data = null) {
+    const options = {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    };
+    
+    if (token) {
+        options.headers.Authorization = `Bearer ${token}`;
+    }
+    
+    if (data) {
+        options.body = JSON.stringify(data);
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}${url}`, options);
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.message || '请求失败');
+        }
+        
+        return result;
+    } catch (error) {
+        showToast(error.message, 'error');
+        throw error;
+    }
+}
+
 // 初始化
-window.onload = function() {
+window.onload = async function() {
     console.log('App loading...');
     try {
         initAuthPage();
         setDefaultDates();
-        console.log('Initializing standards page...');
         initStandardsPage();
-        console.log('Standards page initialized');
         initSelectOptions();
         updateCountdown();
-        setInterval(updateCountdown, 60000); // 每分钟更新倒计时
+        setInterval(updateCountdown, 60000);
+        
+        // 检查是否有保存的 token，自动登录
+        if (token) {
+            await autoLogin();
+        }
+        
+        // 初始化顶部标题栏自动隐藏功能
+        initHeaderAutoHide();
     } catch (error) {
         console.error('Error during initialization:', error);
     }
 };
+
+// 顶部标题栏自动隐藏功能
+let lastScrollY = 0;
+function initHeaderAutoHide() {
+    const header = document.getElementById('main-page')?.querySelector('.header');
+    if (!header) return;
+    
+    window.addEventListener('scroll', function() {
+        const currentScrollY = window.scrollY;
+        const mainPage = document.getElementById('main-page');
+        
+        // 只在主页面显示时才生效
+        if (!mainPage || !mainPage.classList.contains('active')) {
+            header.classList.remove('hidden');
+            return;
+        }
+        
+        // 向下滚动超过50px时隐藏，向上滚动时显示
+        if (currentScrollY > lastScrollY && currentScrollY > 50) {
+            header.classList.add('hidden');
+        } else {
+            header.classList.remove('hidden');
+        }
+        
+        lastScrollY = currentScrollY;
+    });
+}
+
+// 自动登录
+async function autoLogin() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/auth/me`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('登录失效');
+        }
+        
+        const result = await response.json();
+        if (result.user) {
+            currentUser = result.user;
+            examDate = currentUser.examDate || '';
+            document.getElementById('current-user').textContent = `欢迎，${currentUser.username}`;
+            applyTheme(currentUser.color);
+            document.getElementById('auth-page').classList.remove('active');
+            document.getElementById('main-page').classList.add('active');
+            await loadRecords();
+            initDashboard();
+            initHistoryPage();
+        }
+    } catch (error) {
+        token = null;
+        localStorage.removeItem('sports_token');
+    }
+}
 
 // 设置默认日期
 function setDefaultDates() {
@@ -105,7 +204,22 @@ function setDefaultDates() {
 
 // 初始化认证页面
 function initAuthPage() {
-    // 认证页面初始化
+    updateUserSelect();
+}
+
+// 更新用户选择下拉框
+async function updateUserSelect() {
+    try {
+        const result = await apiRequest('/users/list');
+        const users = result;
+        const select = document.getElementById('login-user');
+        select.innerHTML = '<option value="">选择用户</option>';
+        users.forEach(user => {
+            select.innerHTML += `<option value="${user.username}">${user.username} (${user.gender === 'male' ? '男' : '女'})</option>`;
+        });
+    } catch (error) {
+        console.error('Failed to load users:', error);
+    }
 }
 
 // 显示认证标签页
@@ -123,7 +237,7 @@ function showAuthTab(tab) {
 }
 
 // 注册
-function register() {
+async function register() {
     const username = document.getElementById('reg-username').value.trim();
     const gender = document.getElementById('reg-gender').value;
     const color = document.getElementById('reg-color').value;
@@ -140,29 +254,34 @@ function register() {
         return;
     }
     
-    if (users.find(u => u.username === username)) {
-        showToast('用户名已存在', 'warning');
-        return;
+    try {
+        const result = await apiRequest('/auth/register', 'POST', {
+            username,
+            password,
+            gender,
+            color
+        });
+        
+        token = result.token;
+        localStorage.setItem('sports_token', token);
+        currentUser = result.user;
+        examDate = currentUser.examDate || '';
+        
+        showToast('注册成功！', 'success');
+        document.getElementById('current-user').textContent = `欢迎，${currentUser.username}`;
+        applyTheme(currentUser.color);
+        document.getElementById('auth-page').classList.remove('active');
+        document.getElementById('main-page').classList.add('active');
+        await loadRecords();
+        initDashboard();
+        initHistoryPage();
+    } catch (error) {
+        console.error('Registration failed:', error);
     }
-    
-    const user = {
-        username,
-        gender,
-        color,
-        password,
-        createdAt: new Date().toISOString()
-    };
-    
-    users.push(user);
-    localStorage.setItem('sports_users', JSON.stringify(users));
-    
-    showToast('注册成功！', 'success');
-    updateUserSelect();
-    showAuthTab('login');
 }
 
 // 登录
-function login() {
+async function login() {
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value;
     
@@ -171,25 +290,38 @@ function login() {
         return;
     }
     
-    const user = users.find(u => u.username === username && u.password === password);
-    if (!user) {
-        showToast('用户名或密码错误', 'error');
-        return;
+    try {
+        const result = await apiRequest('/auth/login', 'POST', {
+            username,
+            password
+        });
+        
+        token = result.token;
+        localStorage.setItem('sports_token', token);
+        currentUser = result.user;
+        examDate = currentUser.examDate || '';
+        
+        document.getElementById('current-user').textContent = `欢迎，${currentUser.username}`;
+        applyTheme(currentUser.color);
+        document.getElementById('auth-page').classList.remove('active');
+        document.getElementById('main-page').classList.add('active');
+        await loadRecords();
+        initDashboard();
+        initHistoryPage();
+    } catch (error) {
+        console.error('Login failed:', error);
     }
-    
-    currentUser = user;
-    document.getElementById('current-user').textContent = `欢迎，${user.username}`;
-    
-    // 应用主题颜色
-    applyTheme(user.color);
-    
-    // 切换到主页面
-    document.getElementById('auth-page').classList.remove('active');
-    document.getElementById('main-page').classList.add('active');
-    
-    // 初始化主页面
-    initDashboard();
-    initHistoryPage();
+}
+
+// 加载记录
+async function loadRecords() {
+    try {
+        const result = await apiRequest('/records');
+        records = result;
+    } catch (error) {
+        console.error('Failed to load records:', error);
+        records = [];
+    }
 }
 
 // 应用主题颜色
@@ -203,6 +335,9 @@ function applyTheme(colorKey) {
 // 退出登录
 function logout() {
     currentUser = null;
+    token = null;
+    records = [];
+    localStorage.removeItem('sports_token');
     document.getElementById('main-page').classList.remove('active');
     document.getElementById('auth-page').classList.add('active');
     document.getElementById('login-password').value = '';
@@ -244,13 +379,13 @@ function initProfilePage() {
 function initDashboard() {
     if (!currentUser) return;
     
-    const userRecords = records.filter(r => r.username === currentUser.username);
-    const dailyRecords = userRecords.filter(r => r.type === 'daily');
-    const examRecords = userRecords.filter(r => r.type === 'exam');
-    
-    // 本月打卡天数
+    // 计算本月打卡天数
     const currentMonth = new Date().toISOString().slice(0, 7);
-    const monthDates = new Set(dailyRecords.filter(r => r.date.startsWith(currentMonth)).map(r => r.date));
+    const dailyRecords = records.filter(r => {
+        const recordDate = new Date(r.date).toISOString().slice(0, 7);
+        return recordDate === currentMonth;
+    });
+    const monthDates = new Set(dailyRecords.map(r => new Date(r.date).toISOString().split('T')[0]));
     const monthCheckins = monthDates.size;
     document.getElementById('month-checkins').textContent = `${monthCheckins} 天`;
     
@@ -259,13 +394,13 @@ function initDashboard() {
     document.getElementById('streak-days').textContent = `${streak} 天`;
     
     // 总训练次数
-    document.getElementById('total-records').textContent = `${userRecords.length} 次`;
+    document.getElementById('total-records').textContent = `${records.length} 次`;
     
     // 更新倒计时
     updateCountdown();
     
     // 渲染趋势图
-    renderTrendChart(userRecords);
+    renderTrendChart(records);
     
     // 初始化项目成绩趋势图表选择器
     const chartSelect = document.getElementById('chart-sport');
@@ -278,19 +413,21 @@ function initDashboard() {
     }
     
     // 渲染最近记录
-    renderRecentRecords(userRecords);
+    renderRecentRecords(records);
 }
 
 // 计算连续打卡天数
 function calculateStreak(dailyRecords) {
     if (dailyRecords.length === 0) return 0;
     
-    const dates = [...new Set(dailyRecords.map(r => r.date))].sort().reverse();
+    const dates = [...new Set(dailyRecords.map(r => {
+        return new Date(r.date).toISOString().split('T')[0];
+    }))].sort().reverse();
+    
     let streak = 0;
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     
-    // 检查今天或昨天是否有打卡
     if (dates[0] !== today && dates[0] !== yesterday) {
         return 0;
     }
@@ -344,18 +481,19 @@ function renderTrendChart(userRecords) {
     const ctx = document.getElementById('trend-chart');
     if (!ctx) return;
     
-    // 获取最近30天的数据
     const dates = [];
     const counts = [];
     const today = new Date();
     
-    for (let i = 29; i >= 0; i--) {
+    for (let i = 6; i >= 0; i--) {
         const date = new Date(today);
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
-        dates.push(dateStr.slice(5)); // 只显示月-日
+        dates.push(dateStr.slice(5));
         
-        const dayRecords = userRecords.filter(r => r.date === dateStr);
+        const dayRecords = userRecords.filter(r => {
+            return new Date(r.date).toISOString().split('T')[0] === dateStr;
+        });
         counts.push(dayRecords.length);
     }
     
@@ -401,16 +539,17 @@ function renderRecentRecords(userRecords) {
     const tbody = document.querySelector('#recent-table tbody');
     if (!tbody) return;
     
-    const dailyRecords = userRecords.filter(r => r.type === 'daily');
-    const recent = dailyRecords.slice(-5).reverse();
+    const sortedRecords = [...userRecords].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const recent = sortedRecords.slice(0, 5);
     
     tbody.innerHTML = recent.map(r => {
+        const sport = r.sports?.[0];
         return `
             <tr>
-                <td>${r.date}</td>
-                <td>${r.itemName || r.item}</td>
-                <td>${r.value}</td>
-                <td>${r.score}分</td>
+                <td>${new Date(r.date).toISOString().split('T')[0]}</td>
+                <td>${sport?.type || '综合'}</td>
+                <td>${sport?.result || '-'}</td>
+                <td>${sport?.score || 0}分</td>
             </tr>
         `;
     }).join('');
@@ -418,7 +557,6 @@ function renderRecentRecords(userRecords) {
 
 // 初始化选择选项
 function initSelectOptions() {
-    // 历史页面项目筛选
     const historySportSelect = document.getElementById('history-sport');
     if (historySportSelect) {
         historySportSelect.innerHTML = '<option value="all">全部项目</option>';
@@ -430,11 +568,10 @@ function initSelectOptions() {
 }
 
 // 保存每日打卡记录
-function saveDailyRecord() {
+async function saveDailyRecord() {
     if (!currentUser) return;
     
     const date = document.getElementById('daily-date').value;
-    const duration = document.getElementById('training-duration').value;
     const note = document.getElementById('training-note').value;
     
     const checkedItems = document.querySelectorAll('.sport-item:checked');
@@ -443,18 +580,17 @@ function saveDailyRecord() {
         return;
     }
     
-    let savedCount = 0;
+    const sports = [];
     
-    checkedItems.forEach(checkbox => {
+    for (const checkbox of checkedItems) {
         const itemKey = checkbox.value;
         const inputDiv = document.getElementById(`input-${itemKey}`);
         let value = inputDiv ? inputDiv.querySelector('input').value : '';
         
-        if (!value) return;
+        if (!value) continue;
         
-        // 解析成绩
-        let parsedValue;
         const standard = SCORING_STANDARDS[currentUser.gender][itemKey];
+        let parsedValue;
         if (standard && (standard.format === 'time' || standard.format === 'time_decimal')) {
             parsedValue = parseTimeInput(value);
         } else {
@@ -466,43 +602,35 @@ function saveDailyRecord() {
             return;
         }
         
-        // 计算得分
         const result = calculateScore(currentUser.gender, itemKey, parsedValue);
         
-        const record = {
-            id: Date.now() + Math.random(),
-            username: currentUser.username,
-            type: 'daily',
-            date,
-            item: itemKey,
-            itemName: standard ? standard.name : itemKey,
-            value: formatValue(itemKey, parsedValue),
-            rawValue: parsedValue,
-            score: result.score,
-            level: result.level,
-            duration,
-            note,
-            createdAt: new Date().toISOString()
-        };
-        
-        records.push(record);
-        savedCount++;
-    });
-    
-    if (savedCount > 0) {
-        localStorage.setItem('sports_records', JSON.stringify(records));
-        showToast(`保存成功！已记录 ${savedCount} 项训练`, 'success');
-        
-        // 清空表单
-        document.querySelectorAll('.sport-item').forEach(cb => {
-            cb.checked = false;
+        sports.push({
+            type: itemKey,
+            result: formatValue(itemKey, parsedValue),
+            score: result.score
         });
-        document.getElementById('training-duration').value = '';
+    }
+    
+    if (sports.length === 0) return;
+    
+    try {
+        await apiRequest('/records', 'POST', {
+            date,
+            sports,
+            note
+        });
+        
+        showToast('保存成功！', 'success');
+        
+        document.querySelectorAll('.sport-item').forEach(cb => cb.checked = false);
         document.getElementById('training-note').value = '';
         document.getElementById('sport-inputs').innerHTML = '';
         
-        // 更新数据
+        await loadRecords();
         initDashboard();
+        initHistoryPage();
+    } catch (error) {
+        console.error('Failed to save record:', error);
     }
 }
 
@@ -538,9 +666,7 @@ function updateSportInputs() {
 // 初始化历史页面
 function initHistoryPage() {
     if (!currentUser) return;
-    
-    const userRecords = records.filter(r => r.username === currentUser.username);
-    renderHistoryTable(userRecords);
+    renderHistoryTable(records);
 }
 
 // 渲染历史表格
@@ -550,44 +676,44 @@ function renderHistoryTable(userRecords) {
     
     const sportFilter = document.getElementById('history-sport')?.value || 'all';
     
-    let filtered = userRecords.filter(r => r.type === 'daily');
+    let filtered = [...userRecords];
     
     if (sportFilter !== 'all') {
-        filtered = filtered.filter(r => r.item === sportFilter);
+        filtered = filtered.filter(r => r.sports?.some(s => s.type === sportFilter));
     }
     
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
     
-    // 桌面端表格
     tbody.innerHTML = filtered.map(r => {
+        const sport = r.sports?.[0];
         return `
             <tr>
-                <td>${r.date}</td>
-                <td>${r.itemName || r.item}</td>
-                <td>${r.value}</td>
-                <td>${r.score}分</td>
-                <td><button onclick="deleteRecord(${r.id})">删除</button></td>
+                <td>${new Date(r.date).toISOString().split('T')[0]}</td>
+                <td>${sport?.type || '综合'}</td>
+                <td>${sport?.result || '-'}</td>
+                <td>${sport?.score || 0}分</td>
+                <td><button onclick="deleteRecord('${r._id}')">删除</button></td>
             </tr>
         `;
     }).join('');
     
-    // 移动端卡片列表
     const historyList = document.getElementById('history-list');
     if (historyList) {
         historyList.innerHTML = filtered.map(r => {
+            const sport = r.sports?.[0];
             return `
                 <div class="history-card">
                     <div class="history-card-header">
-                        <span class="history-card-date">${r.date}</span>
+                        <span class="history-card-date">${new Date(r.date).toISOString().split('T')[0]}</span>
                     </div>
                     <div class="history-card-content">
                         <div class="history-card-item">
-                            <div class="history-card-name">${r.itemName || r.item}</div>
-                            <div class="history-card-value">${r.value}</div>
+                            <div class="history-card-name">${sport?.type || '综合'}</div>
+                            <div class="history-card-value">${sport?.result || '-'}</div>
                         </div>
-                        <div class="history-card-score">${r.score}分</div>
+                        <div class="history-card-score">${sport?.score || 0}分</div>
                     </div>
-                    <button onclick="deleteRecord(${r.id})" style="margin-top: 10px; width: 100%; padding: 8px; background: var(--danger-color); color: white; border: none; border-radius: 6px; cursor: pointer;">删除</button>
+                    <button onclick="deleteRecord('${r._id}')" style="margin-top: 10px; width: 100%; padding: 8px; background: var(--danger-color); color: white; border: none; border-radius: 6px; cursor: pointer;">删除</button>
                 </div>
             `;
         }).join('');
@@ -612,13 +738,11 @@ function quickCheckin(sportKey) {
     closeQuickCheckin();
     showPage('record');
     
-    // 自动选中对应的项目
     const checkbox = document.querySelector(`.sport-item[value="${sportKey}"]`);
     if (checkbox) {
         checkbox.checked = true;
         updateSportInputs();
         
-        // 滚动到输入区域
         setTimeout(() => {
             const inputsDiv = document.getElementById('sport-inputs');
             if (inputsDiv) {
@@ -628,39 +752,20 @@ function quickCheckin(sportKey) {
     }
 }
 
-// 更新运动项目输入框
-function updateSportInputs() {
-    const container = document.getElementById('sport-inputs');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    document.querySelectorAll('.sport-item:checked').forEach(checkbox => {
-        const itemKey = checkbox.value;
-        const standard = SCORING_STANDARDS[currentUser?.gender || 'female'][itemKey];
-        
-        const div = document.createElement('div');
-        div.className = 'form-group sport-input-group';
-        div.id = `input-${itemKey}`;
-        div.innerHTML = `
-            <label>${standard ? standard.name : itemKey}成绩 (${standard ? standard.unit : ''})</label>
-            <input type="text" class="mobile-input" placeholder="${standard && (standard.format === 'time' || standard.format === 'time_decimal') ? '格式：3\'30 或 3:30' : '输入成绩'}" inputmode="${standard && (standard.format === 'time' || standard.format === 'time_decimal') ? 'text' : 'decimal'}">
-        `;
-        container.appendChild(div);
-    });
-}
-
 // 删除记录
 async function deleteRecord(id) {
     const confirmed = await showConfirm('删除记录', '确定要删除这条记录吗？');
     if (!confirmed) return;
     
-    records = records.filter(r => r.id !== id);
-    localStorage.setItem('sports_records', JSON.stringify(records));
-    
-    showToast('记录已删除', 'success');
-    initHistoryPage();
-    initDashboard();
+    try {
+        await apiRequest(`/records/${id}`, 'DELETE');
+        showToast('记录已删除', 'success');
+        await loadRecords();
+        initHistoryPage();
+        initDashboard();
+    } catch (error) {
+        console.error('Failed to delete record:', error);
+    }
 }
 
 // 更新历史图表
@@ -668,18 +773,16 @@ function updateHistoryChart() {
     const sport = document.getElementById('chart-sport').value;
     if (!sport || !currentUser) return;
     
-    const userRecords = records.filter(r => 
-        r.username === currentUser.username && 
-        r.type === 'daily' && 
-        r.item === sport
+    const filteredRecords = records.filter(r => 
+        r.sports?.some(s => s.type === sport)
     );
     
-    if (userRecords.length === 0) {
+    if (filteredRecords.length === 0) {
         showToast('该项目暂无记录', 'info');
         return;
     }
     
-    userRecords.sort((a, b) => new Date(a.date) - new Date(b.date));
+    filteredRecords.sort((a, b) => new Date(a.date) - new Date(b.date));
     
     const ctx = document.getElementById('history-chart');
     if (!ctx) return;
@@ -688,10 +791,12 @@ function updateHistoryChart() {
         historyChart.destroy();
     }
     
-    const labels = userRecords.map(r => r.date.slice(5));
-    const values = userRecords.map(r => r.rawValue);
+    const labels = filteredRecords.map(r => new Date(r.date).toISOString().slice(5, 10));
+    const values = filteredRecords.map(r => {
+        const sportData = r.sports?.find(s => s.type === sport);
+        return parseFloat(sportData?.result) || 0;
+    });
     
-    // 获取项目信息用于标签
     const standard = SCORING_STANDARDS[currentUser.gender][sport] || 
                      SCORING_STANDARDS.female[sport] || 
                      SCORING_STANDARDS.male[sport];
@@ -729,27 +834,19 @@ function updateHistoryChart() {
 
 // 导出数据
 function exportData() {
-    if (!currentUser) return;
-    
-    const userRecords = records.filter(r => r.username === currentUser.username);
-    
-    if (userRecords.length === 0) {
+    if (!currentUser || records.length === 0) {
         alert('暂无数据可导出');
         return;
     }
     
-    // 构建CSV内容
-    let csv = '日期,类型,项目,成绩,得分,备注\n';
+    let csv = '日期,项目,成绩,得分,备注\n';
     
-    userRecords.forEach(r => {
-        if (r.type === 'daily') {
-            csv += `${r.date},日常训练,${r.itemName || r.item},${r.value},${r.score},${r.note || ''}\n`;
-        } else {
-            csv += `${r.date},模拟考试,综合,总分,${r.totalScore},必考:${r.runScore}分\n`;
-        }
+    records.forEach(r => {
+        r.sports?.forEach(sport => {
+            csv += `${new Date(r.date).toISOString().split('T')[0]},${sport.type},${sport.result},${sport.score},${r.note || ''}\n`;
+        });
     });
     
-    // 下载CSV文件
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -759,23 +856,17 @@ function exportData() {
 
 // 初始化评分标准页面
 function initStandardsPage() {
-    console.log('Starting initStandardsPage');
-    // 渲染女生标准
-    console.log('Rendering female standards...');
     renderStandardTable('female', '800m', 'female-800m', 0);
     renderStandardTable('female', '50m', 'female-50m', 1);
     renderStandardTable('female', 'situp', 'female-situp', 2);
     renderStandardTable('female', 'jump', 'female-jump', 3);
     renderStandardTable('female', 'stretch', 'female-stretch', 4);
     
-    // 渲染男生标准
-    console.log('Rendering male standards...');
     renderStandardTable('male', '1000m', 'male-1000m', 0);
     renderStandardTable('male', '50m', 'male-50m', 1);
     renderStandardTable('male', 'pullup', 'male-pullup', 2);
     renderStandardTable('male', 'jump', 'male-jump', 3);
     renderStandardTable('male', 'stretch', 'male-stretch', 4);
-    console.log('initStandardsPage complete');
 }
 
 // 显示标准标签页
@@ -804,22 +895,33 @@ function closeSettings() {
 }
 
 // 保存设置
-function saveSettings() {
-    examDate = document.getElementById('exam-date-setting').value;
-    localStorage.setItem('sports_exam_date', examDate);
+async function saveSettings() {
+    const newExamDate = document.getElementById('exam-date-setting').value;
+    
+    try {
+        await apiRequest('/users', 'PUT', {
+            examDate: newExamDate
+        });
+        
+        examDate = newExamDate;
+        showToast('设置已保存', 'success');
+    } catch (error) {
+        console.error('Failed to save settings:', error);
+    }
     
     const newPassword = document.getElementById('new-password').value;
     if (newPassword && currentUser) {
-        currentUser.password = newPassword;
-        const userIndex = users.findIndex(u => u.username === currentUser.username);
-        if (userIndex >= 0) {
-            users[userIndex] = currentUser;
-            localStorage.setItem('sports_users', JSON.stringify(users));
+        try {
+            await apiRequest('/users', 'PUT', {
+                password: newPassword
+            });
+            showToast('密码已更新', 'success');
+            document.getElementById('new-password').value = '';
+        } catch (error) {
+            console.error('Failed to update password:', error);
         }
-        document.getElementById('new-password').value = '';
     }
     
     updateCountdown();
     closeSettings();
-    showToast('设置已保存', 'success');
 }
