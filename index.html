@@ -51,13 +51,16 @@
                     <input type="password" id="reg-confirm-password" placeholder="确认密码" class="mobile-input" autocomplete="new-password">
                     <button onclick="register()" class="mobile-btn">注册</button>
                 </div>
+                <div class="copyright">
+                    <p>作者：songwenmeng</p>
+                </div>
             </div>
         </div>
 
         <!-- 主页面 -->
         <div id="main-page" class="page">
             <!-- 顶部导航 -->
-            <header class="header">
+            <header class="header" id="main-header">
                 <div class="header-left">
                     <h2>🏃 体育打卡</h2>
                 </div>
@@ -179,7 +182,7 @@
                     <h2>我的</h2>
                     <div class="profile-section">
                         <div class="profile-info">
-                            <div class="profile-avatar">👤</div>
+                            <div class="profile-avatar" id="profile-avatar">👤</div>
                             <div class="profile-details">
                                 <p id="profile-username"></p>
                                 <p id="profile-gender"></p>
@@ -319,6 +322,14 @@
         <div id="settings-modal" class="modal hidden">
             <div class="modal-content">
                 <h3>设置</h3>
+                <div class="form-group">
+                    <label>选择头像</label>
+                    <div id="avatar-selector" class="avatar-selector"></div>
+                </div>
+                <div class="form-group">
+                    <label>修改用户名</label>
+                    <input type="text" id="new-username" placeholder="输入新用户名">
+                </div>
                 <div class="form-group">
                     <label>中考体育考试日期</label>
                     <input type="date" id="exam-date-setting">

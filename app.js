@@ -6,6 +6,23 @@ let examDate = localStorage.getItem('sports_exam_date') || '';
 let trendChart = null;
 let historyChart = null;
 
+// 默认头像列表（10个）
+const AVATARS = [
+    '🐵', '🐶', '🐱', '🐼', '🦊',
+    '🐨', '🐯', '🦁', '🐮', '🐷'
+];
+
+// 获取头像显示名称
+function getAvatarName(avatar) {
+    const names = {
+        '🐵': '小猴', '🐶': '小狗', '🐱': '小猫',
+        '🐼': '熊猫', '🦊': '狐狸', '🐨': '考拉',
+        '🐯': '老虎', '🦁': '狮子', '🐮': '小牛',
+        '🐷': '小猪'
+    };
+    return names[avatar] || '默认';
+}
+
 // Toast提示功能
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -89,10 +106,48 @@ window.onload = function() {
         initSelectOptions();
         updateCountdown();
         setInterval(updateCountdown, 60000); // 每分钟更新倒计时
+        
+        // 尝试自动登录
+        autoLogin();
     } catch (error) {
         console.error('Error during initialization:', error);
     }
 };
+
+// 自动登录 - 页面刷新后恢复登录状态
+function autoLogin() {
+    // 从 localStorage 获取保存的用户名
+    const savedUsername = localStorage.getItem('sports_current_user');
+    if (savedUsername) {
+        // 查找用户
+        const user = users.find(u => u.username === savedUsername);
+        if (user) {
+            currentUser = user;
+            document.getElementById('current-user').textContent = `欢迎，${user.username}`;
+            
+            // 应用主题颜色
+            applyTheme(user.color);
+            
+            // 切换到主页面
+            document.getElementById('auth-page').classList.remove('active');
+            document.getElementById('main-page').classList.add('active');
+            
+            // 确保只在概览页面显示顶部标题栏
+            const header = document.getElementById('main-header');
+            const mainContent = document.querySelector('.main-content');
+            if (header && mainContent) {
+                header.style.display = 'flex';
+                mainContent.style.paddingTop = '20px';
+            }
+            
+            // 初始化主页面
+            initDashboard();
+            initHistoryPage();
+            
+            console.log('Auto login successful:', user.username);
+        }
+    }
+}
 
 // 设置默认日期
 function setDefaultDates() {
@@ -105,7 +160,11 @@ function setDefaultDates() {
 
 // 初始化认证页面
 function initAuthPage() {
-    // 认证页面初始化
+    // 恢复保存的用户名
+    const savedUsername = localStorage.getItem('sports_login_username');
+    if (savedUsername) {
+        document.getElementById('login-username').value = savedUsername;
+    }
 }
 
 // 显示认证标签页
@@ -150,6 +209,7 @@ function register() {
         gender,
         color,
         password,
+        avatar: AVATARS[0], // 默认使用第一个头像
         createdAt: new Date().toISOString()
     };
     
@@ -177,8 +237,23 @@ function login() {
         return;
     }
     
+    // 确保用户有头像字段（兼容旧用户）
+    if (!user.avatar) {
+        user.avatar = AVATARS[0];
+        const userIndex = users.findIndex(u => u.username === user.username);
+        if (userIndex >= 0) {
+            users[userIndex] = user;
+            localStorage.setItem('sports_users', JSON.stringify(users));
+        }
+    }
+    
     currentUser = user;
     document.getElementById('current-user').textContent = `欢迎，${user.username}`;
+    
+    // 保存当前用户到 localStorage，用于自动登录
+    localStorage.setItem('sports_current_user', user.username);
+    // 保存登录用户名，用于记住用户名
+    localStorage.setItem('sports_login_username', user.username);
     
     // 应用主题颜色
     applyTheme(user.color);
@@ -203,8 +278,11 @@ function applyTheme(colorKey) {
 // 退出登录
 function logout() {
     currentUser = null;
+    // 清除保存的用户名，防止自动登录
+    localStorage.removeItem('sports_current_user');
     document.getElementById('main-page').classList.remove('active');
     document.getElementById('auth-page').classList.add('active');
+    document.getElementById('login-username').value = '';
     document.getElementById('login-password').value = '';
     showToast('已退出登录', 'info');
 }
@@ -220,6 +298,19 @@ function showPage(page) {
     document.querySelectorAll('.content-page').forEach(p => p.classList.remove('active'));
     document.getElementById(page + '-page').classList.add('active');
     
+    // 只在概览页面显示顶部标题栏
+    const header = document.getElementById('main-header');
+    const mainContent = document.querySelector('.main-content');
+    if (header && mainContent) {
+        if (page === 'dashboard') {
+            header.style.display = 'flex';
+            mainContent.style.paddingTop = '20px';
+        } else {
+            header.style.display = 'none';
+            mainContent.style.paddingTop = '0';
+        }
+    }
+    
     if (page === 'dashboard') {
         initDashboard();
     } else if (page === 'history') {
@@ -233,11 +324,16 @@ function showProfile() {
     showPage('profile');
 }
 
-function initProfilePage() {
+function updateProfilePage() {
     if (currentUser) {
+        document.getElementById('profile-avatar').textContent = currentUser.avatar || '👤';
         document.getElementById('profile-username').textContent = `用户名：${currentUser.username}`;
         document.getElementById('profile-gender').textContent = `性别：${currentUser.gender === 'male' ? '男' : '女'}`;
     }
+}
+
+function initProfilePage() {
+    updateProfilePage();
 }
 
 // 初始化概览页面
@@ -344,12 +440,12 @@ function renderTrendChart(userRecords) {
     const ctx = document.getElementById('trend-chart');
     if (!ctx) return;
     
-    // 获取最近30天的数据
+    // 获取最近7天的数据
     const dates = [];
     const counts = [];
     const today = new Date();
     
-    for (let i = 29; i >= 0; i--) {
+    for (let i = 6; i >= 0; i--) {
         const date = new Date(today);
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
@@ -434,7 +530,6 @@ function saveDailyRecord() {
     if (!currentUser) return;
     
     const date = document.getElementById('daily-date').value;
-    const duration = document.getElementById('training-duration').value;
     const note = document.getElementById('training-note').value;
     
     const checkedItems = document.querySelectorAll('.sport-item:checked');
@@ -449,12 +544,15 @@ function saveDailyRecord() {
         const itemKey = checkbox.value;
         const inputDiv = document.getElementById(`input-${itemKey}`);
         let value = inputDiv ? inputDiv.querySelector('input').value : '';
+        const standard = SCORING_STANDARDS[currentUser.gender][itemKey];
         
-        if (!value) return;
+        if (!value) {
+            showToast(`请输入${standard ? standard.name : itemKey}的成绩`, 'warning');
+            return;
+        }
         
         // 解析成绩
         let parsedValue;
-        const standard = SCORING_STANDARDS[currentUser.gender][itemKey];
         if (standard && (standard.format === 'time' || standard.format === 'time_decimal')) {
             parsedValue = parseTimeInput(value);
         } else {
@@ -480,7 +578,6 @@ function saveDailyRecord() {
             rawValue: parsedValue,
             score: result.score,
             level: result.level,
-            duration,
             note,
             createdAt: new Date().toISOString()
         };
@@ -497,7 +594,6 @@ function saveDailyRecord() {
         document.querySelectorAll('.sport-item').forEach(cb => {
             cb.checked = false;
         });
-        document.getElementById('training-duration').value = '';
         document.getElementById('training-note').value = '';
         document.getElementById('sport-inputs').innerHTML = '';
         
@@ -793,7 +889,32 @@ function showStandardTab(gender) {
 }
 
 // 显示设置
+let selectedAvatar = null;
+
+function renderAvatarSelector() {
+    const container = document.getElementById('avatar-selector');
+    container.innerHTML = '';
+    
+    AVATARS.forEach(avatar => {
+        const div = document.createElement('div');
+        div.className = `avatar-option ${avatar === (selectedAvatar || currentUser?.avatar) ? 'selected' : ''}`;
+        div.innerHTML = `
+            <span class="avatar-icon">${avatar}</span>
+            <span class="avatar-name">${getAvatarName(avatar)}</span>
+        `;
+        div.onclick = () => selectAvatar(avatar);
+        container.appendChild(div);
+    });
+}
+
+function selectAvatar(avatar) {
+    selectedAvatar = avatar;
+    renderAvatarSelector();
+}
+
 function showSettings() {
+    selectedAvatar = currentUser?.avatar || AVATARS[0];
+    renderAvatarSelector();
     document.getElementById('settings-modal').classList.remove('hidden');
     document.getElementById('exam-date-setting').value = examDate;
 }
@@ -808,6 +929,65 @@ function saveSettings() {
     examDate = document.getElementById('exam-date-setting').value;
     localStorage.setItem('sports_exam_date', examDate);
     
+    // 修改头像
+    if (selectedAvatar && currentUser && selectedAvatar !== currentUser.avatar) {
+        // 更新用户列表中的头像
+        const userIndex = users.findIndex(u => u.username === currentUser.username);
+        if (userIndex >= 0) {
+            users[userIndex].avatar = selectedAvatar;
+            localStorage.setItem('sports_users', JSON.stringify(users));
+        }
+        
+        // 更新当前用户对象
+        currentUser.avatar = selectedAvatar;
+        
+        // 更新我的页面显示
+        updateProfilePage();
+        
+        showToast('头像已更新', 'success');
+    }
+    
+    // 修改用户名
+    const newUsername = document.getElementById('new-username').value.trim();
+    if (newUsername && currentUser && newUsername !== currentUser.username) {
+        // 检查用户名是否已存在
+        const existingUser = users.find(u => u.username === newUsername);
+        if (existingUser) {
+            showToast('用户名已存在', 'warning');
+            return;
+        }
+        
+        // 更新用户列表中的用户名
+        const userIndex = users.findIndex(u => u.username === currentUser.username);
+        if (userIndex >= 0) {
+            users[userIndex].username = newUsername;
+            localStorage.setItem('sports_users', JSON.stringify(users));
+        }
+        
+        // 更新当前用户对象
+        currentUser.username = newUsername;
+        
+        // 更新显示的用户名
+        document.getElementById('current-user').textContent = `欢迎，${newUsername}`;
+        
+        // 更新自动登录保存的用户名
+        localStorage.setItem('sports_current_user', newUsername);
+        
+        // 更新所有记录中的用户名
+        records.forEach(r => {
+            if (r.username === currentUser.username) {
+                r.username = newUsername;
+            }
+        });
+        localStorage.setItem('sports_records', JSON.stringify(records));
+        
+        // 更新我的页面显示
+        document.getElementById('profile-username').textContent = `用户名：${newUsername}`;
+        
+        document.getElementById('new-username').value = '';
+    }
+    
+    // 修改密码
     const newPassword = document.getElementById('new-password').value;
     if (newPassword && currentUser) {
         currentUser.password = newPassword;

@@ -1,0 +1,63 @@
+{
+  "users": [
+    {
+      "id": 1778557673335,
+      "username": "测试",
+      "password": "$2a$10$FIlUTtU.kbfmpn0XFjLite8ZRHlSAd2SkfVC9wmIRqbDQA54MkWKu",
+      "gender": "female",
+      "color": "purple",
+      "examDate": "2026-07-01",
+      "createdAt": "2026-05-12T03:47:53.335Z"
+    },
+    {
+      "id": 1778558072879,
+      "username": "测试1",
+      "password": "$2a$10$Ky1fCl/Qb.yvqsZ7JouSa.53cDvGSPHkvv/UxISX24rNLiQkyMFJu",
+      "gender": "male",
+      "color": "blue",
+      "examDate": null,
+      "createdAt": "2026-05-12T03:54:32.879Z"
+    },
+    {
+      "id": 1778558246765,
+      "username": "MoMo",
+      "password": "$2a$10$vYwZkDpX0JMPZKrvNK3Ko.FzhMRFz1gFGIeDxoRgyZZVny5MFxoGC",
+      "gender": "female",
+      "color": "orange",
+      "examDate": "2026-07-27",
+      "createdAt": "2026-05-12T03:57:26.765Z"
+    }
+  ],
+  "records": [
+    {
+      "id": 1778557691158,
+      "userId": 1778557673335,
+      "date": "2026-05-12",
+      "sports": [
+        {
+          "type": "situp",
+          "result": "34次",
+          "score": 72
+        }
+      ],
+      "duration": 0,
+      "note": "",
+      "createdAt": "2026-05-12T03:48:11.158Z"
+    },
+    {
+      "id": 1778558263570,
+      "userId": 1778558246765,
+      "date": "2026-05-12",
+      "sports": [
+        {
+          "type": "situp",
+          "result": "28次",
+          "score": 66
+        }
+      ],
+      "duration": 0,
+      "note": "",
+      "createdAt": "2026-05-12T03:57:43.570Z"
+    }
+  ]
+}
