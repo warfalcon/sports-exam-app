@@ -250,9 +250,17 @@ function login() {
     currentUser = user;
     document.getElementById('current-user').textContent = `欢迎，${user.username}`;
     
-    // 保存当前用户到 localStorage，用于自动登录
-    localStorage.setItem('sports_current_user', user.username);
-    // 保存登录用户名，用于记住用户名
+    // 根据"记住我"选项决定是否保存自动登录信息
+    const rememberMe = document.getElementById('remember-me')?.checked;
+    if (rememberMe) {
+        // 保存当前用户到 localStorage，用于自动登录
+        localStorage.setItem('sports_current_user', user.username);
+    } else {
+        // 如果不记住我，清除自动登录信息
+        localStorage.removeItem('sports_current_user');
+    }
+    
+    // 保存登录用户名（用于填充登录框）
     localStorage.setItem('sports_login_username', user.username);
     
     // 应用主题颜色
