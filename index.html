@@ -43,14 +43,6 @@
                         <option value="male">男生</option>
                         <option value="female">女生</option>
                     </select>
-                    <select id="reg-color" class="mobile-select">
-                        <option value="">选择主题颜色</option>
-                        <option value="blue">蓝色</option>
-                        <option value="green">绿色</option>
-                        <option value="purple">紫色</option>
-                        <option value="orange">橙色</option>
-                        <option value="pink">粉色</option>
-                    </select>
                     <input type="password" id="reg-password" placeholder="密码" class="mobile-input" autocomplete="new-password">
                     <input type="password" id="reg-confirm-password" placeholder="确认密码" class="mobile-input" autocomplete="new-password">
                     <button onclick="register()" class="mobile-btn">注册</button>
@@ -65,13 +57,7 @@
         <div id="main-page" class="page">
             <!-- 顶部导航 -->
             <header class="header" id="main-header">
-                <div class="header-left">
-                    <h2>🏃 体育打卡</h2>
-                </div>
-                <div class="header-right">
-                    <span id="current-user">欢迎，用户</span>
-                    <span id="countdown" class="countdown"></span>
-                </div>
+                <h2>🏃 体育打卡</h2>
             </header>
 
             <!-- 主内容区 -->
@@ -148,10 +134,6 @@
                             </div>
                         </div>
                         <div id="sport-inputs"></div>
-                        <div class="form-group">
-                            <label>备注</label>
-                            <textarea id="training-note" placeholder="记录训练感受..." class="mobile-input"></textarea>
-                        </div>
                         <button onclick="saveDailyRecord()" class="mobile-btn mobile-btn-primary">保存打卡记录</button>
                     </div>
                 </div>
@@ -181,28 +163,47 @@
                 </div>
 
                 <!-- 我的页面 -->
-                 
                 <div id="profile-page" class="content-page">
                     <h2>我的</h2>
-                    <div class="profile-section">
-                        <div class="profile-info">
-                            <div class="profile-avatar" id="profile-avatar">👤</div>
-                            <div class="profile-details">
-                                <p id="profile-username"></p>
-                                <p id="profile-gender"></p>
+                    
+                    <!-- 当前孩子信息 -->
+                    <div class="profile-section" id="current-child-section">
+                        <div class="section-header">
+                            <h3>当前孩子</h3>
+                            <button class="add-child-btn" onclick="showAddChildModal()">+ 添加孩子</button>
+                        </div>
+                        <div class="current-child-card" id="current-child-card">
+                            <div class="child-avatar-large" id="child-avatar">👤</div>
+                            <div class="child-info">
+                                <p class="child-name" id="child-name">请添加孩子</p>
+                                <p class="child-gender" id="child-gender"></p>
                             </div>
                         </div>
                     </div>
-                    <div class="settings-list">
-                        <div class="settings-item" onclick="showSettings()">
-                            <span class="settings-icon">⚙️</span>
-                            <span class="settings-label">设置</span>
-                            <span class="settings-arrow">›</span>
+                    
+                    <!-- 孩子列表 -->
+                    <div class="profile-section" id="children-list-section">
+                        <h3>管理孩子</h3>
+                        <div class="children-list" id="children-list">
+                            <div class="empty-state">
+                                <p>暂无孩子，请添加</p>
+                            </div>
                         </div>
-                        <div class="settings-item" onclick="logout()">
-                            <span class="settings-icon">🚪</span>
-                            <span class="settings-label">退出登录</span>
-                            <span class="settings-arrow">›</span>
+                    </div>
+                    
+                    <!-- 设置列表 -->
+                    <div class="profile-section">
+                        <div class="settings-list">
+                            <div class="settings-item" onclick="showSettings()">
+                                <span class="settings-icon">⚙️</span>
+                                <span class="settings-label">设置</span>
+                                <span class="settings-arrow">›</span>
+                            </div>
+                            <div class="settings-item" onclick="logout()">
+                                <span class="settings-icon">🚪</span>
+                                <span class="settings-label">退出登录</span>
+                                <span class="settings-arrow">›</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -218,58 +219,108 @@
                     <div id="female-standards" class="standards-content">
                         <h3>女生评分标准</h3>
                         <div class="standard-section">
-                            <h4>800米跑（必考）</h4>
-                            <table class="standard-table" id="female-800m"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('female-800m-section')">
+                                <h4>800米跑（必考）</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="female-800m-section" class="section-content">
+                                <table class="standard-table" id="female-800m"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                         <div class="standard-section">
-                            <h4>50米跑</h4>
-                            <table class="standard-table" id="female-50m"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('female-50m-section')">
+                                <h4>50米跑</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="female-50m-section" class="section-content hidden">
+                                <table class="standard-table" id="female-50m"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                         <div class="standard-section">
-                            <h4>1分钟仰卧起坐</h4>
-                            <table class="standard-table" id="female-situp"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('female-situp-section')">
+                                <h4>1分钟仰卧起坐</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="female-situp-section" class="section-content hidden">
+                                <table class="standard-table" id="female-situp"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                         <div class="standard-section">
-                            <h4>1分钟跳绳</h4>
-                            <table class="standard-table" id="female-jump"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('female-jump-section')">
+                                <h4>1分钟跳绳</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="female-jump-section" class="section-content hidden">
+                                <table class="standard-table" id="female-jump"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                         <div class="standard-section">
-                            <h4>坐位体前屈</h4>
-                            <table class="standard-table" id="female-stretch"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('female-stretch-section')">
+                                <h4>坐位体前屈</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="female-stretch-section" class="section-content hidden">
+                                <table class="standard-table" id="female-stretch"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                     </div>
                     
                     <div id="male-standards" class="standards-content hidden">
                         <h3>男生评分标准</h3>
                         <div class="standard-section">
-                            <h4>1000米跑（必考）</h4>
-                            <table class="standard-table" id="male-1000m"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('male-1000m-section')">
+                                <h4>1000米跑（必考）</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="male-1000m-section" class="section-content">
+                                <table class="standard-table" id="male-1000m"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                         <div class="standard-section">
-                            <h4>50米跑</h4>
-                            <table class="standard-table" id="male-50m"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('male-50m-section')">
+                                <h4>50米跑</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="male-50m-section" class="section-content hidden">
+                                <table class="standard-table" id="male-50m"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                         <div class="standard-section">
-                            <h4>引体向上</h4>
-                            <table class="standard-table" id="male-pullup"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('male-pullup-section')">
+                                <h4>引体向上</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="male-pullup-section" class="section-content hidden">
+                                <table class="standard-table" id="male-pullup"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                         <div class="standard-section">
-                            <h4>1分钟跳绳</h4>
-                            <table class="standard-table" id="male-jump"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('male-jump-section')">
+                                <h4>1分钟跳绳</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="male-jump-section" class="section-content hidden">
+                                <table class="standard-table" id="male-jump"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                         <div class="standard-section">
-                            <h4>坐位体前屈</h4>
-                            <table class="standard-table" id="male-stretch"></table>
-                            <div class="standard-table-mobile"></div>
+                            <div class="section-header" onclick="toggleSection('male-stretch-section')">
+                                <h4>坐位体前屈</h4>
+                                <span class="section-arrow">▼</span>
+                            </div>
+                            <div id="male-stretch-section" class="section-content hidden">
+                                <table class="standard-table" id="male-stretch"></table>
+                                <div class="standard-table-mobile"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -327,10 +378,6 @@
             <div class="modal-content">
                 <h3>设置</h3>
                 <div class="form-group">
-                    <label>选择头像</label>
-                    <div id="avatar-selector" class="avatar-selector"></div>
-                </div>
-                <div class="form-group">
                     <label>修改用户名</label>
                     <input type="text" id="new-username" placeholder="输入新用户名">
                 </div>
@@ -345,6 +392,32 @@
                 <div class="modal-buttons">
                     <button onclick="saveSettings()">保存</button>
                     <button onclick="closeSettings()">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 添加孩子弹窗 -->
+        <div id="add-child-modal" class="modal hidden">
+            <div class="modal-content">
+                <h3>添加孩子</h3>
+                <div class="form-group">
+                    <label>孩子姓名</label>
+                    <input type="text" id="child-name-input" placeholder="请输入孩子姓名">
+                </div>
+                <div class="form-group">
+                    <label>性别</label>
+                    <select id="child-gender-select">
+                        <option value="male">男生</option>
+                        <option value="female">女生</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>选择头像</label>
+                    <div id="child-avatar-selector" class="avatar-selector"></div>
+                </div>
+                <div class="modal-buttons">
+                    <button onclick="saveChild()">保存</button>
+                    <button onclick="closeAddChildModal()">取消</button>
                 </div>
             </div>
         </div>

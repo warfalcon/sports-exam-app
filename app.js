@@ -6,6 +6,185 @@ let examDate = localStorage.getItem('sports_exam_date') || '';
 let trendChart = null;
 let historyChart = null;
 
+// 孩子管理相关
+let children = JSON.parse(localStorage.getItem('sports_children')) || [];
+let currentChild = null;
+
+// 离线支持相关
+let isOnline = navigator.onLine;
+let pendingRecords = JSON.parse(localStorage.getItem('sports_pending_records')) || [];
+
+// 检查网络状态
+function checkOnlineStatus() {
+    isOnline = navigator.onLine;
+    updateOnlineIndicator();
+    
+    if (isOnline && pendingRecords.length > 0) {
+        showToast(`检测到网络，正在同步 ${pendingRecords.length} 条离线数据...`, 'info');
+        syncPendingRecords();
+    }
+}
+
+// 保存待同步记录
+function savePendingRecord(record) {
+    pendingRecords.push(record);
+    localStorage.setItem('sports_pending_records', JSON.stringify(pendingRecords));
+    showToast('数据已保存，将在联网后自动同步', 'info');
+}
+
+// 同步待处理记录
+async function syncPendingRecords() {
+    if (pendingRecords.length === 0) return;
+    
+    const successCount = 0;
+    const failedRecords = [];
+    
+    for (const record of pendingRecords) {
+        try {
+            const response = await fetch('/api/records', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('sports_token')}`
+                },
+                body: JSON.stringify(record)
+            });
+            
+            if (response.ok) {
+                successCount++;
+            } else {
+                failedRecords.push(record);
+            }
+        } catch (error) {
+            failedRecords.push(record);
+        }
+    }
+    
+    pendingRecords = failedRecords;
+    localStorage.setItem('sports_pending_records', JSON.stringify(pendingRecords));
+    
+    if (successCount > 0) {
+        showToast(`成功同步 ${successCount} 条数据`, 'success');
+    }
+    
+    if (failedRecords.length > 0) {
+        showToast(`有 ${failedRecords.length} 条数据同步失败`, 'warning');
+    }
+}
+
+// 监听网络状态变化
+window.addEventListener('online', checkOnlineStatus);
+window.addEventListener('offline', checkOnlineStatus);
+
+// 监听Service Worker同步请求
+navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SYNC_REQUEST') {
+        syncPendingRecords();
+    }
+});
+
+// 加载孩子列表
+function loadChildren() {
+    // 从当前用户的children数组加载
+    if (currentUser) {
+        // 确保currentUser有children属性
+        if (!currentUser.children) {
+            currentUser.children = [];
+            updateUserInUsers(currentUser);
+        }
+        children = currentUser.children;
+        localStorage.setItem('sports_children', JSON.stringify(children));
+        
+        if (children.length > 0 && !currentChild) {
+            currentChild = children[0];
+            localStorage.setItem('sports_current_child', JSON.stringify(currentChild));
+        }
+        
+        updateProfilePage();
+    }
+}
+
+// 更新用户数组中的用户
+function updateUserInUsers(user) {
+    const index = users.findIndex(u => u.username === user.username);
+    if (index >= 0) {
+        users[index] = user;
+        localStorage.setItem('sports_users', JSON.stringify(users));
+    }
+}
+
+// 添加孩子
+function addChild(name, gender, avatar, color) {
+    if (!currentUser) {
+        showToast('请先登录', 'warning');
+        return;
+    }
+    
+    if (!currentUser.children) {
+        currentUser.children = [];
+    }
+    
+    const child = {
+        id: Date.now(),
+        name,
+        gender: gender || 'male',
+        avatar: avatar || '🐵',
+        color: color || 'blue',
+        createdAt: new Date().toISOString()
+    };
+    
+    currentUser.children.push(child);
+    updateUserInUsers(currentUser);
+    children = currentUser.children;
+    localStorage.setItem('sports_children', JSON.stringify(children));
+    
+    showToast('添加成功', 'success');
+    loadChildren();
+}
+
+// 删除孩子
+function deleteChild(childId) {
+    if (!confirm('确定要删除这个孩子吗？删除后将无法恢复！')) {
+        return;
+    }
+    
+    if (!currentUser || !currentUser.children) {
+        return;
+    }
+    
+    currentUser.children = currentUser.children.filter(c => c.id !== childId);
+    updateUserInUsers(currentUser);
+    children = currentUser.children;
+    localStorage.setItem('sports_children', JSON.stringify(children));
+    
+    // 删除该孩子的所有记录
+    records = records.filter(r => r.childId !== childId);
+    localStorage.setItem('sports_records', JSON.stringify(records));
+    
+    if (currentChild && currentChild.id === childId) {
+        currentChild = children.length > 0 ? children[0] : null;
+        localStorage.setItem('sports_current_child', JSON.stringify(currentChild));
+    }
+    
+    showToast('删除成功', 'success');
+    loadChildren();
+}
+
+// 选择当前孩子
+function selectChild(child) {
+    currentChild = child;
+    localStorage.setItem('sports_current_child', JSON.stringify(child));
+    
+    const themeColor = child.color && THEME_COLORS[child.color] ? child.color : (currentUser?.color || 'blue');
+    applyTheme(themeColor);
+    
+    updateProfilePage();
+    showToast(`已切换到 ${child.name}`, 'success');
+    
+    initDashboard();
+    initHistoryPage();
+}
+
 // 默认头像列表（10个）
 const AVATARS = [
     '🐵', '🐶', '🐱', '🐼', '🦊',
@@ -94,21 +273,75 @@ const THEME_COLORS = {
     pink: { primary: '#e91e63', secondary: '#c2185b', light: '#fce4ec' }
 };
 
+// 初始化Service Worker
+async function initServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        try {
+            const registration = await navigator.serviceWorker.register('/sw.js');
+            console.log('Service Worker registered:', registration);
+            
+            registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        showToast('有新版本可用，请刷新页面', 'info');
+                    }
+                });
+            });
+        } catch (error) {
+            console.error('Service Worker registration failed:', error);
+        }
+    }
+}
+
 // 初始化
 window.onload = function() {
     console.log('App loading...');
+    
+    // 在任何其他初始化之前先尝试自动登录
+    console.log('=== 页面加载，首先尝试自动登录 ===');
+    const savedUsername = localStorage.getItem('sports_current_user');
+    const savedUsers = localStorage.getItem('sports_users');
+    
+    console.log('localStorage.sports_current_user:', savedUsername);
+    console.log('localStorage.sports_users存在:', !!savedUsers);
+    
+    if (savedUsername) {
+        // 立即尝试自动登录，不要等待其他初始化
+        setTimeout(() => {
+            autoLogin();
+        }, 0);
+    }
+    
     try {
+        // 初始化Service Worker（离线支持）
+        initServiceWorker();
+        
+        // 检查网络状态
+        checkOnlineStatus();
+        
         initAuthPage();
         setDefaultDates();
-        console.log('Initializing standards page...');
-        initStandardsPage();
-        console.log('Standards page initialized');
+        // 延迟初始化标准页面，确保DOM元素已加载
+        setTimeout(() => {
+            console.log('Initializing standards page...');
+            initStandardsPage();
+            console.log('Standards page initialized');
+        }, 100);
         initSelectOptions();
         updateCountdown();
         setInterval(updateCountdown, 60000); // 每分钟更新倒计时
         
-        // 尝试自动登录
-        autoLogin();
+        // 如果之前没有自动登录成功，再次尝试
+        if (!currentUser && savedUsername) {
+            console.log('第一次自动登录失败，再次尝试...');
+            setTimeout(autoLogin, 50);
+        }
+        
+        // 检查待同步记录
+        if (pendingRecords.length > 0) {
+            showToast(`有 ${pendingRecords.length} 条数据待同步`, 'warning');
+        }
     } catch (error) {
         console.error('Error during initialization:', error);
     }
@@ -116,37 +349,95 @@ window.onload = function() {
 
 // 自动登录 - 页面刷新后恢复登录状态
 function autoLogin() {
-    // 从 localStorage 获取保存的用户名
+    console.log('=== 自动登录检查 ===');
+    
+    // 检查localStorage中的数据
     const savedUsername = localStorage.getItem('sports_current_user');
-    if (savedUsername) {
-        // 查找用户
-        const user = users.find(u => u.username === savedUsername);
-        if (user) {
-            currentUser = user;
-            document.getElementById('current-user').textContent = `欢迎，${user.username}`;
-            
-            // 应用主题颜色
-            applyTheme(user.color);
-            
-            // 切换到主页面
-            document.getElementById('auth-page').classList.remove('active');
-            document.getElementById('main-page').classList.add('active');
-            
-            // 确保只在概览页面显示顶部标题栏
-            const header = document.getElementById('main-header');
-            const mainContent = document.querySelector('.main-content');
-            if (header && mainContent) {
-                header.style.display = 'flex';
-                mainContent.style.paddingTop = '20px';
+    console.log('savedUsername:', savedUsername);
+    console.log('users数组长度:', users.length);
+    
+    if (!savedUsername) {
+        console.log('自动登录失败：未找到保存的用户名');
+        return;
+    }
+    
+    // 如果users数组为空，尝试从localStorage重新加载
+    if (users.length === 0) {
+        console.log('users数组为空，尝试从localStorage重新加载');
+        const savedUsers = localStorage.getItem('sports_users');
+        if (savedUsers) {
+            try {
+                users = JSON.parse(savedUsers);
+                console.log('重新加载成功，users数组长度:', users.length);
+            } catch (e) {
+                console.log('重新加载失败:', e);
+                return;
             }
-            
-            // 初始化主页面
-            initDashboard();
-            initHistoryPage();
-            
-            console.log('Auto login successful:', user.username);
+        } else {
+            console.log('localStorage中没有保存的用户数据');
+            return;
         }
     }
+    
+    const user = users.find(u => u.username === savedUsername);
+    if (!user) {
+        console.log('自动登录失败：未找到匹配的用户');
+        return;
+    }
+    
+    console.log('找到用户:', user.username);
+    
+    // 检查DOM元素是否存在
+    const authPage = document.getElementById('auth-page');
+    const mainPage = document.getElementById('main-page');
+    
+    if (!authPage || !mainPage) {
+        console.log('自动登录失败：DOM元素未加载');
+        // 延迟重试
+        setTimeout(autoLogin, 100);
+        return;
+    }
+    
+    // 执行自动登录
+    currentUser = user;
+    
+    const savedChild = localStorage.getItem('sports_current_child');
+    if (savedChild) {
+        try {
+            currentChild = JSON.parse(savedChild);
+            console.log('恢复当前孩子:', currentChild?.name);
+        } catch (e) {
+            currentChild = null;
+            console.log('恢复孩子失败:', e);
+        }
+    }
+    
+    let themeColor;
+    if (currentChild && currentChild.color && THEME_COLORS[currentChild.color]) {
+        themeColor = currentChild.color;
+    } else if (user.color && THEME_COLORS[user.color]) {
+        themeColor = user.color;
+    } else {
+        themeColor = 'blue';
+    }
+    applyTheme(themeColor);
+    
+    authPage.classList.remove('active');
+    mainPage.classList.add('active');
+    
+    const header = document.getElementById('main-header');
+    const mainContent = document.querySelector('.main-content');
+    if (header && mainContent) {
+        header.style.display = 'none';
+        mainContent.style.paddingTop = '0';
+    }
+    
+    loadChildren();
+    initDashboard();
+    initHistoryPage();
+    
+    console.log('自动登录成功:', user.username);
+    showToast(`欢迎回来，${user.username}`, 'success');
 }
 
 // 设置默认日期
@@ -185,11 +476,10 @@ function showAuthTab(tab) {
 function register() {
     const username = document.getElementById('reg-username').value.trim();
     const gender = document.getElementById('reg-gender').value;
-    const color = document.getElementById('reg-color').value;
     const password = document.getElementById('reg-password').value;
     const confirmPassword = document.getElementById('reg-confirm-password').value;
     
-    if (!username || !gender || !color || !password) {
+    if (!username || !gender || !password) {
         showToast('请填写所有必填项', 'warning');
         return;
     }
@@ -207,9 +497,10 @@ function register() {
     const user = {
         username,
         gender,
-        color,
+        color: 'blue',
         password,
-        avatar: AVATARS[0], // 默认使用第一个头像
+        avatar: AVATARS[0],
+        children: [],
         createdAt: new Date().toISOString()
     };
     
@@ -248,7 +539,6 @@ function login() {
     }
     
     currentUser = user;
-    document.getElementById('current-user').textContent = `欢迎，${user.username}`;
     
     // 根据"记住我"选项决定是否保存自动登录信息
     const rememberMe = document.getElementById('remember-me')?.checked;
@@ -270,6 +560,17 @@ function login() {
     document.getElementById('auth-page').classList.remove('active');
     document.getElementById('main-page').classList.add('active');
     
+    // 去除顶部标题栏
+    const header = document.getElementById('main-header');
+    const mainContent = document.querySelector('.main-content');
+    if (header && mainContent) {
+        header.style.display = 'none';
+        mainContent.style.paddingTop = '0';
+    }
+    
+    // 加载孩子列表
+    loadChildren();
+    
     // 初始化主页面
     initDashboard();
     initHistoryPage();
@@ -278,6 +579,7 @@ function login() {
 // 应用主题颜色
 function applyTheme(colorKey) {
     const colors = THEME_COLORS[colorKey] || THEME_COLORS.blue;
+    
     document.documentElement.style.setProperty('--primary-color', colors.primary);
     document.documentElement.style.setProperty('--secondary-color', colors.secondary);
     document.documentElement.style.setProperty('--light-color', colors.light);
@@ -286,8 +588,10 @@ function applyTheme(colorKey) {
 // 退出登录
 function logout() {
     currentUser = null;
-    // 清除保存的用户名，防止自动登录
+    currentChild = null;
     localStorage.removeItem('sports_current_user');
+    localStorage.removeItem('sports_current_child');
+    localStorage.removeItem('sports_children');
     document.getElementById('main-page').classList.remove('active');
     document.getElementById('auth-page').classList.add('active');
     document.getElementById('login-username').value = '';
@@ -306,17 +610,12 @@ function showPage(page) {
     document.querySelectorAll('.content-page').forEach(p => p.classList.remove('active'));
     document.getElementById(page + '-page').classList.add('active');
     
-    // 只在概览页面显示顶部标题栏
+    // 去除顶部标题栏
     const header = document.getElementById('main-header');
     const mainContent = document.querySelector('.main-content');
     if (header && mainContent) {
-        if (page === 'dashboard') {
-            header.style.display = 'flex';
-            mainContent.style.paddingTop = '20px';
-        } else {
-            header.style.display = 'none';
-            mainContent.style.paddingTop = '0';
-        }
+        header.style.display = 'none';
+        mainContent.style.paddingTop = '0';
     }
     
     if (page === 'dashboard') {
@@ -325,6 +624,8 @@ function showPage(page) {
         initHistoryPage();
     } else if (page === 'profile') {
         initProfilePage();
+    } else if (page === 'standards') {
+        initStandardsPage();
     }
 }
 
@@ -333,22 +634,127 @@ function showProfile() {
 }
 
 function updateProfilePage() {
-    if (currentUser) {
-        document.getElementById('profile-avatar').textContent = currentUser.avatar || '👤';
-        document.getElementById('profile-username').textContent = `用户名：${currentUser.username}`;
-        document.getElementById('profile-gender').textContent = `性别：${currentUser.gender === 'male' ? '男' : '女'}`;
+    // 更新当前孩子信息
+    if (currentChild) {
+        document.getElementById('child-avatar').textContent = currentChild.avatar || '👤';
+        document.getElementById('child-name').textContent = currentChild.name;
+        document.getElementById('child-gender').textContent = currentChild.gender === 'male' ? '男生' : '女生';
+    } else {
+        document.getElementById('child-avatar').textContent = '👤';
+        document.getElementById('child-name').textContent = '请添加孩子';
+        document.getElementById('child-gender').textContent = '';
+    }
+    
+    // 更新孩子列表
+    const childrenList = document.getElementById('children-list');
+    if (children.length > 0) {
+        childrenList.innerHTML = children.map(child => `
+            <div class="child-item ${currentChild && currentChild.id === child.id ? 'active' : ''}" 
+                 onclick="selectChild(${JSON.stringify(child).replace(/"/g, '&quot;')})">
+                <div class="child-avatar" style="background: ${getThemeColor(child.color)}15;">${child.avatar}</div>
+                <div class="child-item-info">
+                    <p class="child-item-name">${child.name}</p>
+                    <p class="child-item-gender">${child.gender === 'male' ? '男生' : '女生'}</p>
+                </div>
+                <button class="child-delete-btn" onclick="event.stopPropagation(); deleteChild(${child.id})">删除</button>
+            </div>
+        `).join('');
+    } else {
+        childrenList.innerHTML = '<div class="empty-state"><p>暂无孩子，请添加</p></div>';
     }
 }
 
 function initProfilePage() {
     updateProfilePage();
+    loadChildren();
+}
+
+// 显示添加孩子模态框
+function showAddChildModal() {
+    // 初始化头像选择器
+    const avatarSelector = document.getElementById('child-avatar-selector');
+    if (avatarSelector) {
+        avatarSelector.innerHTML = AVATARS.map((avatar, index) => 
+            `<button class="avatar-option ${index === 0 ? 'active' : ''}" 
+                     data-avatar="${avatar}" onclick="selectAvatar(this)">${avatar}</button>`
+        ).join('');
+    }
+    
+    // 重置表单
+    document.getElementById('child-name-input').value = '';
+    document.getElementById('child-gender-select').value = 'male';
+    document.getElementById('add-child-modal').classList.remove('hidden');
+}
+
+// 关闭添加孩子模态框
+function closeAddChildModal() {
+    document.getElementById('add-child-modal').classList.add('hidden');
+}
+
+// 选择孩子头像
+function selectAvatar(element) {
+    const selector = document.getElementById('child-avatar-selector');
+    selector.querySelectorAll('.avatar-option').forEach(opt => opt.classList.remove('active'));
+    element.classList.add('active');
+}
+
+// 保存孩子
+function saveChild() {
+    const name = document.getElementById('child-name-input').value.trim();
+    const gender = document.getElementById('child-gender-select').value;
+    const avatar = document.getElementById('child-avatar-selector').querySelector('.active').dataset.avatar;
+    
+    if (!name) {
+        showToast('请输入孩子姓名', 'warning');
+        return;
+    }
+    
+    const color = getNextAvailableColor();
+    addChild(name, gender, avatar, color);
+    closeAddChildModal();
+}
+
+// 获取下一个可用的主题颜色
+function getNextAvailableColor() {
+    const colors = ['blue', 'green', 'purple', 'orange', 'pink'];
+    
+    if (!currentUser || !currentUser.children || currentUser.children.length === 0) {
+        return colors[0];
+    }
+    
+    const usedColors = currentUser.children.map(c => c.color);
+    
+    for (const color of colors) {
+        if (!usedColors.includes(color)) {
+            return color;
+        }
+    }
+    
+    return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// 获取主题色
+function getThemeColor(color) {
+    const colors = {
+        blue: '#3498db',
+        green: '#27ae60',
+        purple: '#9b59b6',
+        orange: '#e67e22',
+        pink: '#e91e63'
+    };
+    return colors[color] || colors.blue;
 }
 
 // 初始化概览页面
 function initDashboard() {
     if (!currentUser) return;
     
-    const userRecords = records.filter(r => r.username === currentUser.username);
+    let userRecords = records.filter(r => r.username === currentUser.username);
+    
+    if (currentChild) {
+        userRecords = userRecords.filter(r => r.childId === currentChild.id);
+    }
+    
     const dailyRecords = userRecords.filter(r => r.type === 'daily');
     const examRecords = userRecords.filter(r => r.type === 'exam');
     
@@ -419,11 +825,9 @@ function calculateStreak(dailyRecords) {
 
 // 更新倒计时
 function updateCountdown() {
-    const countdownEl = document.getElementById('countdown');
     const examCountdownEl = document.getElementById('exam-countdown');
     
     if (!examDate) {
-        countdownEl.textContent = '';
         if (examCountdownEl) examCountdownEl.textContent = '未设置';
         return;
     }
@@ -433,13 +837,11 @@ function updateCountdown() {
     const diff = exam - now;
     
     if (diff <= 0) {
-        countdownEl.textContent = '考试已结束';
         if (examCountdownEl) examCountdownEl.textContent = '已结束';
         return;
     }
     
     const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    countdownEl.textContent = `⏰ 距离考试还有 ${days} 天`;
     if (examCountdownEl) examCountdownEl.textContent = `${days} 天`;
 }
 
@@ -538,7 +940,6 @@ function saveDailyRecord() {
     if (!currentUser) return;
     
     const date = document.getElementById('daily-date').value;
-    const note = document.getElementById('training-note').value;
     
     const checkedItems = document.querySelectorAll('.sport-item:checked');
     if (checkedItems.length === 0) {
@@ -578,6 +979,8 @@ function saveDailyRecord() {
         const record = {
             id: Date.now() + Math.random(),
             username: currentUser.username,
+            childId: currentChild?.id || null,
+            childName: currentChild?.name || '',
             type: 'daily',
             date,
             item: itemKey,
@@ -586,7 +989,6 @@ function saveDailyRecord() {
             rawValue: parsedValue,
             score: result.score,
             level: result.level,
-            note,
             createdAt: new Date().toISOString()
         };
         
@@ -602,7 +1004,6 @@ function saveDailyRecord() {
         document.querySelectorAll('.sport-item').forEach(cb => {
             cb.checked = false;
         });
-        document.getElementById('training-note').value = '';
         document.getElementById('sport-inputs').innerHTML = '';
         
         // 更新数据
@@ -643,7 +1044,12 @@ function updateSportInputs() {
 function initHistoryPage() {
     if (!currentUser) return;
     
-    const userRecords = records.filter(r => r.username === currentUser.username);
+    let userRecords = records.filter(r => r.username === currentUser.username);
+    
+    if (currentChild) {
+        userRecords = userRecords.filter(r => r.childId === currentChild.id);
+    }
+    
     renderHistoryTable(userRecords);
 }
 
@@ -863,23 +1269,40 @@ function exportData() {
 
 // 初始化评分标准页面
 function initStandardsPage() {
-    console.log('Starting initStandardsPage');
-    // 渲染女生标准
-    console.log('Rendering female standards...');
-    renderStandardTable('female', '800m', 'female-800m', 0);
-    renderStandardTable('female', '50m', 'female-50m', 1);
-    renderStandardTable('female', 'situp', 'female-situp', 2);
-    renderStandardTable('female', 'jump', 'female-jump', 3);
-    renderStandardTable('female', 'stretch', 'female-stretch', 4);
+    if (typeof SCORING_STANDARDS === 'undefined') {
+        console.error('SCORING_STANDARDS not loaded');
+        return;
+    }
     
-    // 渲染男生标准
-    console.log('Rendering male standards...');
-    renderStandardTable('male', '1000m', 'male-1000m', 0);
-    renderStandardTable('male', '50m', 'male-50m', 1);
-    renderStandardTable('male', 'pullup', 'male-pullup', 2);
-    renderStandardTable('male', 'jump', 'male-jump', 3);
-    renderStandardTable('male', 'stretch', 'male-stretch', 4);
-    console.log('initStandardsPage complete');
+    const femaleItems = [
+        { key: '800m', container: 'female-800m' },
+        { key: '50m', container: 'female-50m' },
+        { key: 'situp', container: 'female-situp' },
+        { key: 'jump', container: 'female-jump' },
+        { key: 'stretch', container: 'female-stretch' }
+    ];
+    
+    const maleItems = [
+        { key: '1000m', container: 'male-1000m' },
+        { key: '50m', container: 'male-50m' },
+        { key: 'pullup', container: 'male-pullup' },
+        { key: 'jump', container: 'male-jump' },
+        { key: 'stretch', container: 'male-stretch' }
+    ];
+    
+    femaleItems.forEach((item, index) => {
+        const container = document.getElementById(item.container);
+        if (container && SCORING_STANDARDS.female && SCORING_STANDARDS.female[item.key]) {
+            renderStandardTable('female', item.key, item.container, index);
+        }
+    });
+    
+    maleItems.forEach((item, index) => {
+        const container = document.getElementById(item.container);
+        if (container && SCORING_STANDARDS.male && SCORING_STANDARDS.male[item.key]) {
+            renderStandardTable('male', item.key, item.container, index);
+        }
+    });
 }
 
 // 显示标准标签页
@@ -896,33 +1319,25 @@ function showStandardTab(gender) {
     }
 }
 
+// 切换折叠/展开状态
+function toggleSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (section) {
+        section.classList.toggle('hidden');
+        
+        // 更新箭头方向
+        const header = section.previousElementSibling;
+        if (header) {
+            const arrow = header.querySelector('.section-arrow');
+            if (arrow) {
+                arrow.textContent = section.classList.contains('hidden') ? '▼' : '▲';
+            }
+        }
+    }
+}
+
 // 显示设置
-let selectedAvatar = null;
-
-function renderAvatarSelector() {
-    const container = document.getElementById('avatar-selector');
-    container.innerHTML = '';
-    
-    AVATARS.forEach(avatar => {
-        const div = document.createElement('div');
-        div.className = `avatar-option ${avatar === (selectedAvatar || currentUser?.avatar) ? 'selected' : ''}`;
-        div.innerHTML = `
-            <span class="avatar-icon">${avatar}</span>
-            <span class="avatar-name">${getAvatarName(avatar)}</span>
-        `;
-        div.onclick = () => selectAvatar(avatar);
-        container.appendChild(div);
-    });
-}
-
-function selectAvatar(avatar) {
-    selectedAvatar = avatar;
-    renderAvatarSelector();
-}
-
 function showSettings() {
-    selectedAvatar = currentUser?.avatar || AVATARS[0];
-    renderAvatarSelector();
     document.getElementById('settings-modal').classList.remove('hidden');
     document.getElementById('exam-date-setting').value = examDate;
 }
@@ -936,24 +1351,6 @@ function closeSettings() {
 function saveSettings() {
     examDate = document.getElementById('exam-date-setting').value;
     localStorage.setItem('sports_exam_date', examDate);
-    
-    // 修改头像
-    if (selectedAvatar && currentUser && selectedAvatar !== currentUser.avatar) {
-        // 更新用户列表中的头像
-        const userIndex = users.findIndex(u => u.username === currentUser.username);
-        if (userIndex >= 0) {
-            users[userIndex].avatar = selectedAvatar;
-            localStorage.setItem('sports_users', JSON.stringify(users));
-        }
-        
-        // 更新当前用户对象
-        currentUser.avatar = selectedAvatar;
-        
-        // 更新我的页面显示
-        updateProfilePage();
-        
-        showToast('头像已更新', 'success');
-    }
     
     // 修改用户名
     const newUsername = document.getElementById('new-username').value.trim();
@@ -974,9 +1371,6 @@ function saveSettings() {
         
         // 更新当前用户对象
         currentUser.username = newUsername;
-        
-        // 更新显示的用户名
-        document.getElementById('current-user').textContent = `欢迎，${newUsername}`;
         
         // 更新自动登录保存的用户名
         localStorage.setItem('sports_current_user', newUsername);
